@@ -4,6 +4,8 @@ import os
 import random
 import tempfile
 from pathlib import Path
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
 
 import chess
 import discord
@@ -11,11 +13,32 @@ from discord import app_commands
 from discord.ext import commands
 
 # ============================================================
+# MINI SERVIDOR WEB PARA O RENDER (WEB SERVICE)
+# ============================================================
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Dischess Hub is online!")
+
+def run_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(('0.0.0.0', port), SimpleHandler)
+    server.serve_forever()
+
+# Inicia o servidor web em segundo plano para o Render não dar Timeout
+server_thread = threading.Thread(target=run_server)
+server_thread.daemon = True
+server_thread.start()
+
+
+# ============================================================
 # CONFIGURAÇÃO
 # ============================================================
 intents = discord.Intents.default()
 intents.members = True  # Necessário para atualizar cargos de ELO.
-# Este bot não lê mensagens comuns, então message_content não é necessário.
+intents.message_content = True  # Necessário para comandos e mensagens.
+
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 ELO_INICIAL = 100
@@ -423,7 +446,6 @@ class ChessGameView(discord.ui.View):
                 if piece.color == self.board.turn
             ]
             pecas_do_turno.sort(key=lambda item: item[0])
-            # Até 16 peças: quatro botões por linha, deixando a última linha para ações.
             for index, (square, piece) in enumerate(pecas_do_turno):
                 self.add_item(SelecionarPecaButton(self, square, piece, row=index // 4))
         else:
@@ -436,7 +458,6 @@ class ChessGameView(discord.ui.View):
                 self.reconstruir_componentes()
                 return
 
-            # 15 destinos por página: até 3 linhas de cinco botões.
             total_paginas = max(1, (len(legais) + 14) // 15)
             self.pagina_destinos = min(self.pagina_destinos, total_paginas - 1)
             inicio = self.pagina_destinos * 15
