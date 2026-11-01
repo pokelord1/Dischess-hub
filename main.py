@@ -4,8 +4,6 @@ import os
 import random
 import tempfile
 from pathlib import Path
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
 
 import chess
 import discord
@@ -13,31 +11,11 @@ from discord import app_commands
 from discord.ext import commands
 
 # ============================================================
-# MINI SERVIDOR WEB PARA O RENDER (WEB SERVICE)
-# ============================================================
-class SimpleHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Dischess Hub is online!")
-
-def run_server():
-    port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(('0.0.0.0', port), SimpleHandler)
-    server.serve_forever()
-
-# Inicia o servidor web em segundo plano para o Render não dar Timeout
-server_thread = threading.Thread(target=run_server)
-server_thread.daemon = True
-server_thread.start()
-
-
-# ============================================================
 # CONFIGURAÇÃO
 # ============================================================
 intents = discord.Intents.default()
 intents.members = True  # Necessário para atualizar cargos de ELO.
-intents.message_content = True  # Necessário para comandos e mensagens.
+intents.message_content = True  # Necessário para comandos.
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -52,8 +30,6 @@ ELO_ROLES = [
     (0, "Iniciante"),
 ]
 
-# Partidas ativas na memória. As partidas em andamento não sobrevivem a
-# uma reinicialização; o ELO salvo em JSON sobrevive se o arquivo persistir.
 partidas_por_usuario: dict[int, "ChessGameView"] = {}
 desafios_pendentes: set[tuple[int, int]] = set()
 
@@ -84,9 +60,7 @@ def carregar_elos() -> dict[int, int]:
         return elos
 
     except (OSError, json.JSONDecodeError, ValueError) as erro:
-        # Não sobrescrevemos automaticamente um arquivo que não conseguimos ler.
         print(f"ERRO ao carregar {ARQUIVO_ELO}: {erro}")
-        print("Os ELOs foram iniciados em memória; confira o arquivo antes de salvar.")
         return {}
 
 
@@ -94,7 +68,6 @@ user_elo: dict[int, int] = carregar_elos()
 
 
 def salvar_elos() -> None:
-    """Grava primeiro em arquivo temporário e depois substitui o JSON."""
     ARQUIVO_ELO.parent.mkdir(parents=True, exist_ok=True)
     dados = {str(user_id): elo for user_id, elo in user_elo.items()}
     temporario = None
@@ -147,7 +120,6 @@ async def atualizar_cargo_elo(
     cargo_alvo = discord.utils.get(guild.roles, name=nome_alvo)
 
     if cargo_alvo is None:
-        print(f"AVISO: o cargo '{nome_alvo}' não existe no servidor.")
         return
 
     remover = [
@@ -161,13 +133,8 @@ async def atualizar_cargo_elo(
             await member.remove_roles(*remover, reason="Atualização do cargo de ELO")
         if cargo_alvo not in member.roles:
             await member.add_roles(cargo_alvo, reason="Atualização do cargo de ELO")
-    except discord.Forbidden:
-        print(
-            "ERRO: sem permissão para atualizar cargos. Confira 'Gerenciar cargos' "
-            "e se o cargo do bot está acima dos cargos de ELO."
-        )
-    except discord.HTTPException as erro:
-        print(f"ERRO do Discord ao atualizar cargos: {erro}")
+    except discord.HTTPException:
+        pass
 
 
 async def atualizar_cargos_dos_jogadores(
