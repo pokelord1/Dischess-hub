@@ -4,6 +4,8 @@ import os
 import random
 import tempfile
 from pathlib import Path
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
 
 import chess
 import discord
@@ -11,11 +13,35 @@ from discord import app_commands
 from discord.ext import commands
 
 # ============================================================
-# CONFIGURAÇÃO
+# MINI SERVIDOR WEB PARA O RENDER (WEB SERVICE)
+# ============================================================
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Dischess Hub is online!")
+        
+    def log_message(self, format, *args):
+        # Silencia os logs HTTP para não sujar a consola do bot
+        return
+
+def run_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(('0.0.0.0', port), SimpleHandler)
+    server.serve_forever()
+
+# Inicia o servidor web em segundo plano para o Render não dar Timeout
+server_thread = threading.Thread(target=run_server)
+server_thread.daemon = True
+server_thread.start()
+
+
+# ============================================================
+# CONFIGURAÇÃO DO BOT
 # ============================================================
 intents = discord.Intents.default()
 intents.members = True  # Necessário para atualizar cargos de ELO.
-intents.message_content = True  # Necessário para comandos.
+intents.message_content = True  # Necessário para comandos e mensagens.
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -46,7 +72,7 @@ def carregar_elos() -> dict[int, int]:
             dados = json.load(arquivo)
 
         if not isinstance(dados, dict):
-            raise ValueError("O arquivo de ELO precisa conter um objeto JSON.")
+            raise ValueError("O ficheiro de ELO precisa conter um objeto JSON.")
 
         elos: dict[int, int] = {}
         for user_id, valor in dados.items():
@@ -684,7 +710,7 @@ class DesafioView(discord.ui.View):
 
 
 # ============================================================
-# COMANDOS
+# COMANDOS DO BOT
 # ============================================================
 @bot.event
 async def on_ready():
